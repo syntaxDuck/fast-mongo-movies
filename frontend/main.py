@@ -1,4 +1,5 @@
 from fasthtml.common import *
+import requests
 
 app, rt = fast_app(live=True)
 
@@ -15,7 +16,10 @@ app, rt = fast_app(live=True)
 
 @app.route("/", methods="get")
 def home():
-    return H1("Hello, World")
+    url = "http://127.0.0.1:8000/users"
+    params = {"name": "Ros"}
+    data = requests.get(url, params=params)
+    return H1(f"Hello, World, {data.json()}")
 
 
 @app.route("/", methods=["post", "put"])

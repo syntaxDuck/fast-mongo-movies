@@ -10,6 +10,7 @@ uvicorn = "*"
 fastapi = "*"
 pydantic = {extras = ["email"], version = "*"}
 python-fasthtml = "*"
+requests = "*"
 
 [dev-packages]
 

@@ -1,17 +1,63 @@
 from fastapi import FastAPI, Depends, HTTPException, Query
-from pydantic import BaseModel, EmailStr
-from typing import List, Optional
+from pydantic import BaseModel, EmailStr, Field, HttpUrl
+import pydantic
+from typing import List, Optional, Any
+from bson import ObjectId, json_util
 from backend import MongoDBConfig, MongoDBConnection
 from backend import settings
+from datetime import datetime
 
 app = FastAPI()
 
 
 # Example Pydantic model for User
 class User(BaseModel):
+    id: str = Field(..., alias="_id")
     name: str
     password: str
     email: Optional[EmailStr] = None
+
+    @classmethod
+    def from_mongo(cls, data: dict) -> "User":
+        """Convert MongoDB dict to Pydantic model."""
+        if "_id" in data:
+            data["_id"] = str(data["_id"])
+        return cls(**data)
+
+
+class Movie(BaseModel):
+    id: str = Field(..., alias="_id")
+    plot: str = None
+    genres: list[str] = None
+    runtime: int = None
+    cast: list[str] = None
+    num_mflix_comments: int = None
+    poster: HttpUrl = None
+    title: str = None
+    fullplot: str = None
+    countries: list[str] = None
+    released: datetime = None
+    directors: list[str] = None
+    writers: list[str] = None
+    awards: dict = None
+    lastupdated: datetime
+    year: int = None
+    imdb: dict = None
+    type: str = None
+    tomatoes: dict = None
+
+    @classmethod
+    def validate_id(cls, v):
+        if isinstance(v, ObjectId):
+            return str(v)
+        return v
+
+    @classmethod
+    def from_mongo(cls, data: dict) -> "Movie":
+        """Convert MongoDB dict to Pydantic model."""
+        if "_id" in data:
+            data["_id"] = str(data["_id"])
+        return cls(**data)
 
 
 # Dependency to get the MongoDB connection
@@ -26,6 +72,43 @@ async def get_mongo_connection() -> MongoDBConnection:
     mongo_connection = MongoDBConnection(config)
     await mongo_connection.client
     return mongo_connection
+
+
+@app.get("/movies", response_model=list[Movie])
+async def read_movies(
+    _id: Optional[str] = Query(None, description="Filter by username"),
+    title: Optional[str] = Query(None, description="Filter by title"),
+    type: Optional[str] = Query(None, description="Filter by title"),
+    limit: int = Query(
+        10, description="Limit the number of results"
+    ),  # Default limit to 10
+    skip: int = Query(
+        0, description="Number of records to skip"
+    ),  # Default to skip 0 records
+    mongo: MongoDBConnection = Depends(get_mongo_connection),
+):
+    filter_criteria = {}
+
+    if _id:
+        filter_criteria["_id"] = ObjectId(f"{_id}")
+    if title:
+        filter_criteria["title"] = title
+    if type:
+        filter_criteria["type"] = type
+
+    movies = await mongo.fetch_documents(
+        database_name="sample_mflix",
+        collection_name="movies",
+        filter_query=filter_criteria,
+        limit=limit,
+        skip=skip,
+    )
+
+    if not movies:
+        raise HTTPException(status_code=404, detail="Movies not found")
+
+    # Return only the first 1000 movies
+    return [Movie.from_mongo(movie) for movie in movies]
 
 
 @app.post("/users/")
@@ -46,8 +129,10 @@ async def create_user(
             )
 
         # Insert the new user
-        result = await mongo_conn._client["sample_mflix"]["users"].insert_one(
-            user.model_dump()
+        result = await mongo_conn.insert_documents(
+            database_name="sample_mflix",
+            collection_name="users",
+            documents=user.model_dump(),
         )
         if result.inserted_id:
             return {"message": f"User created successfully: {result.inserted_id}"}
@@ -60,18 +145,23 @@ async def create_user(
 
 @app.get("/users", response_model=list[User])
 async def read_users(
-    _id: Optional[str] = Query(None, description="Filter by ID"),
+    _id: Optional[str] = Query(None, description="Filter by username"),
     name: Optional[str] = Query(None, description="Filter by username"),
     email: Optional[str] = Query(None, description="Filter by email"),
+    limit: int = Query(
+        10, description="Limit the number of results"
+    ),  # Default limit to 10
+    skip: int = Query(
+        0, description="Number of records to skip"
+    ),  # Default to skip 0 records
     mongo: MongoDBConnection = Depends(get_mongo_connection),
 ):
     filter_criteria = {}
-    if _id:
-        filter_criteria["_id"] = _id
 
+    if _id:
+        filter_criteria["_id"] = ObjectId(f"{_id}")
     if name:
         filter_criteria["name"] = name
-
     if email:
         filter_criteria["email"] = email
 
@@ -79,33 +169,59 @@ async def read_users(
         database_name="sample_mflix",
         collection_name="users",
         filter_query=filter_criteria,
+        limit=limit,
+        skip=skip,
     )
 
     if not users:
         raise HTTPException(status_code=404, detail="Users not found")
 
-    return users
+    return [User.from_mongo(user) for user in users]
 
 
-@app.put("/users/{name}", response_model=dict)
+@app.put("/users/", response_model=dict)
 async def update_user(
-    name: str, user: User, mongo: MongoDBConnection = Depends(get_mongo_connection)
+    user: User,
+    _id: Optional[str] = Query(None, description="Filter by email"),
+    name: Optional[str] = Query(None, description="Filter by email"),
+    email: Optional[str] = Query(None, description="Filter by email"),
+    mongo: MongoDBConnection = Depends(get_mongo_connection),
 ):
-    update_result = await mongo._client["sample_mflix"]["users"].update_one(
-        {"name": name}, {"$set": user.model_dump()}
+    filter_criteria = {}
+    if _id:
+        filter_criteria["_id"] = ObjectId(f"{_id}")
+    if name:
+        filter_criteria["name"] = name
+    if email:
+        filter_criteria["email"] = email
+
+    result = await mongo.update_documents(
+        "sample_mflix", "users", filter_criteria, {"$set": user.model_dump()}
     )
-    if update_result.matched_count == 0:
+    if result.matched_count == 0:
         raise HTTPException(status_code=404, detail="User not found")
     return {"message": "User updated successfully"}
 
 
-@app.delete("/users/{name}", response_model=dict)
+@app.delete("/users/", response_model=dict)
 async def delete_user(
-    name: str, mongo: MongoDBConnection = Depends(get_mongo_connection)
+    _id: Optional[str] = Query(None, description="Filter by email"),
+    name: Optional[str] = Query(None, description="Filter by email"),
+    email: Optional[str] = Query(None, description="Filter by email"),
+    mongo: MongoDBConnection = Depends(get_mongo_connection),
 ):
-    delete_result = await mongo._client["sample_mflix"]["users"].delete_one(
-        {"name": name}
+    filter_criteria = {}
+    if _id:
+        filter_criteria["_id"] = ObjectId(f"{_id}")
+    if name:
+        filter_criteria["name"] = name
+    if email:
+        filter_criteria["email"] = email
+
+    delete_result = await mongo.delete_documents(
+        "sample_mflix", "users", filter_criteria
     )
+
     if delete_result.deleted_count == 0:
         raise HTTPException(status_code=404, detail="User not found")
     return {"message": "User deleted successfully"}

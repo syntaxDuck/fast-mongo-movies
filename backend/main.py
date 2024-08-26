@@ -1,6 +1,6 @@
 import asyncio
 from config import settings
-from backend.database import MongoDBConfig, MongoDBConnection
+from database import MongoDBConfig, MongoDBConnection
 
 
 async def main():
@@ -20,10 +20,19 @@ async def main():
     - None
     """
     # Assuming settings is already defined with USER, PASS, and HOST
-    config = MongoDBConfig(settings.USER, settings.PASS, settings.HOST, appName='Cluster0', tls='true', tlsAllowInvalidCertificates='true', retryWrites='true', w='majority')
+    config = MongoDBConfig(
+        settings.USER,
+        settings.PASS,
+        settings.HOST,
+        appName="Cluster0",
+        tls="true",
+        tlsAllowInvalidCertificates="true",
+        retryWrites="true",
+        w="majority",
+    )
     # mongo_connection = MongoDBConnection(config)
     # await mongo_connection.client
-     
+
     db_name = "sample_mflix"
     collection_name = "users"
 
@@ -31,22 +40,27 @@ async def main():
     queries = [
         {"name": {"$regex": "^M"}},  # Users older than 30
         {"naem": {"$regex": "^J"}},  # Users younger than 20
-        {"name": {"$regex": "^A"}}  # Users whose names start with 'A'
+        {"name": {"$regex": "^A"}},  # Users whose names start with 'A'
     ]
 
     # Start fetching data concurrently
     async with MongoDBConnection(config) as mongo_connection:
-        tasks = [mongo_connection.fetch_documents(db_name, collection_name, query) for query in queries]
+        # tasks = [mongo_connection.fetch_documents(db_name, collection_name, query) for query in queries]
         # Wait for all tasks to complete
-        results = await asyncio.gather(*tasks)
-    
+        # results = await asyncio.gather(*tasks)
+        results = await mongo_connection.insert_documents(
+            db_name,
+            collection_name,
+            {"name": "Roshan", "password": "12345", "email": "r@r.com"},
+        )
 
     # Print results
-    for i, result in enumerate(results):
-        print(f"Results for query {i+1}:")
-        for doc in result:
-            print(doc)
+    # for i, result in enumerate(results):
+    #     print(f"Results for query {i+1}:")
+    #     for doc in result:
+    #         print(doc)
+    print(results)
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     asyncio.run(main())

@@ -2,7 +2,7 @@ from typing import Optional
 
 from bson import ObjectId
 from fastapi import Depends, FastAPI, HTTPException, Query
-from .models import Movie, User
+from .models import Movie, User, Comment
 
 from backend import MongoDBConfig, MongoDBConnection, settings
 
@@ -58,6 +58,37 @@ async def read_movies(
 
     # Return only the first 1000 movies
     return [Movie.from_mongo(movie) for movie in movies]
+
+
+@app.get("/comments", response_model=list[Comment])
+async def read_movies(
+    movie_id: Optional[str] = Query(None, description="Filter by username"),
+    limit: int = Query(
+        10, description="Limit the number of results"
+    ),  # Default limit to 10
+    skip: int = Query(
+        0, description="Number of records to skip"
+    ),  # Default to skip 0 records
+    mongo: MongoDBConnection = Depends(get_mongo_connection),
+):
+    filter_criteria = {}
+
+    if movie_id:
+        filter_criteria["movie_id"] = ObjectId(f"{movie_id}")
+
+    comments = await mongo.fetch_documents(
+        database_name="sample_mflix",
+        collection_name="comments",
+        filter_query=filter_criteria,
+        limit=limit,
+        skip=skip,
+    )
+
+    if not comments:
+        raise HTTPException(status_code=404, detail="Comments not found")
+
+    # Return only the first 1000 movies
+    return [Comment.from_mongo(comment) for comment in comments]
 
 
 @app.post("/users/")
@@ -128,49 +159,49 @@ async def read_users(
     return [User.from_mongo(user) for user in users]
 
 
-@app.put("/users/", response_model=dict)
-async def update_user(
-    user: User,
-    _id: Optional[str] = Query(None, description="Filter by email"),
-    name: Optional[str] = Query(None, description="Filter by email"),
-    email: Optional[str] = Query(None, description="Filter by email"),
-    mongo: MongoDBConnection = Depends(get_mongo_connection),
-):
-    filter_criteria = {}
-    if _id:
-        filter_criteria["_id"] = ObjectId(f"{_id}")
-    if name:
-        filter_criteria["name"] = name
-    if email:
-        filter_criteria["email"] = email
+# @app.put("/users/", response_model=dict)
+# async def update_user(
+#     user: User,
+#     _id: Optional[str] = Query(None, description="Filter by email"),
+#     name: Optional[str] = Query(None, description="Filter by email"),
+#     email: Optional[str] = Query(None, description="Filter by email"),
+#     mongo: MongoDBConnection = Depends(get_mongo_connection),
+# ):
+#     filter_criteria = {}
+#     if _id:
+#         filter_criteria["_id"] = ObjectId(f"{_id}")
+#     if name:
+#         filter_criteria["name"] = name
+#     if email:
+#         filter_criteria["email"] = email
 
-    result = await mongo.update_documents(
-        "sample_mflix", "users", filter_criteria, {"$set": user.model_dump()}
-    )
-    if result.matched_count == 0:
-        raise HTTPException(status_code=404, detail="User not found")
-    return {"message": "User updated successfully"}
+#     result = await mongo.update_documents(
+#         "sample_mflix", "users", filter_criteria, {"$set": user.model_dump()}
+#     )
+#     if result.matched_count == 0:
+#         raise HTTPException(status_code=404, detail="User not found")
+#     return {"message": "User updated successfully"}
 
 
-@app.delete("/users/", response_model=dict)
-async def delete_user(
-    _id: Optional[str] = Query(None, description="Filter by email"),
-    name: Optional[str] = Query(None, description="Filter by email"),
-    email: Optional[str] = Query(None, description="Filter by email"),
-    mongo: MongoDBConnection = Depends(get_mongo_connection),
-):
-    filter_criteria = {}
-    if _id:
-        filter_criteria["_id"] = ObjectId(f"{_id}")
-    if name:
-        filter_criteria["name"] = name
-    if email:
-        filter_criteria["email"] = email
+# @app.delete("/users/", response_model=dict)
+# async def delete_user(
+#     _id: Optional[str] = Query(None, description="Filter by email"),
+#     name: Optional[str] = Query(None, description="Filter by email"),
+#     email: Optional[str] = Query(None, description="Filter by email"),
+#     mongo: MongoDBConnection = Depends(get_mongo_connection),
+# ):
+#     filter_criteria = {}
+#     if _id:
+#         filter_criteria["_id"] = ObjectId(f"{_id}")
+#     if name:
+#         filter_criteria["name"] = name
+#     if email:
+#         filter_criteria["email"] = email
 
-    delete_result = await mongo.delete_documents(
-        "sample_mflix", "users", filter_criteria
-    )
+#     delete_result = await mongo.delete_documents(
+#         "sample_mflix", "users", filter_criteria
+#     )
 
-    if delete_result.deleted_count == 0:
-        raise HTTPException(status_code=404, detail="User not found")
-    return {"message": "User deleted successfully"}
+#     if delete_result.deleted_count == 0:
+#         raise HTTPException(status_code=404, detail="User not found")
+#     return {"message": "User deleted successfully"}

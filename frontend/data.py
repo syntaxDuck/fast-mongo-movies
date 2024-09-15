@@ -12,6 +12,14 @@ def fetch_movies(page: int):
     return data.json()
 
 
+def fetch_comments(movie_id: str, page: int):
+    global MOVIE_PAGE_SIZE
+    url = f"{API_ULR}/comments?limit=10&skip={page*MOVIE_PAGE_SIZE}"
+    params = {"movie_id": movie_id}
+    data = requests.get(url, params=params)
+    return data.json()
+
+
 def process_movies(movies: list):
     default_img = "https://thumbs.dreamstime.com/b/film-real-25021714.jpg"
     for movie in movies:

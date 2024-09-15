@@ -1,95 +1,12 @@
 from fasthtml.common import *
-from .components import movie_details, movie_list
-from .data import fetch_movies, process_movies, MOVIE_PAGE_SIZE
+from .components import movie_details, movie_list, rating, detail
+from .data import fetch_movies, process_movies, fetch_comments, MOVIE_PAGE_SIZE
 from .helper import build_movie_list
 
-app, rt = fast_app(
-    live=True,
-    hdrs=(
-        Style(
-            """
-            .box {
-                display:flex;
-                flex-direction: row; 
-                align-items: flex-start;
-            }
+hdrs = []
+hdrs.append(Link(rel="stylesheet", href="frontend/assets/styles.css"))
 
-            .details-header {
-                display: flex; 
-                flex-direction: column;
-            }
-
-            .details-header-info {
-                display: flex;
-                flex-direction: column;
-            }
-
-            .details-header-body {
-                display: flex;
-            }
-
-            .details-header-body div {
-                padding-left: 1em;
-            }
-            
-            .details-header-body p {
-                margin: 0;
-            }
-            
-            .details-header-body hr {
-                margin-top: 0.5em;
-                margin-bottom: 0.5em;
-            }
-            
-            .details-header-info h1 {
-                padding: 0;
-                margin: 0;
-            }
-
-
-            .movie-details {
-                padding-top: 1em;
-                flex-grow: 1; 
-                display: flex;
-                flex-direction: column;
-                justify-content: center;
-            }
-            
-            .details-poster {
-                width: 40%;
-                height: 100%;
-            }
-
-            .movie-details img { background-color: #f2f2f2;
-                    border-radius: 8px;
-                    box-shadow: 0 4px 8px rgba(0, 0, 0, 0.1);
-                    overflow: hidden;
-                    transition: transform 0.2s; }
-
-            .movies { max-width: 20%;
-                    height: 100vh;
-                    padding: 1em;
-                    overflow-y: scroll;
-                    overflow-x: hidden;
-                    box-sizing: border-box;
-                    box-shadow: 0 0 10px rgba(0, 0, 0, 0.1);
-                    display: flex; 
-                    flex-direction: column; }
-
-            .movies button { margin: 20px; padding: 2px; }
-
-                     
-            .movie-list { margin: 0; padding: 0;list-style-type: none; }
-            
-            .movie { background-color: #f2f2f2;
-                    border-radius: 8px;
-                    box-shadow: 0 4px 8px rgba(0, 0, 0, 0.1);
-                    overflow: hidden;
-                    transition: transform 0.2s; }
-            """
-        ),
-    ),
-)
+app, rt = fast_app(live=True, hdrs=hdrs)
 
 movies = []
 
@@ -98,7 +15,6 @@ movies = []
 def home():
     global movies
     movies = []
-
     return Div(movie_list(), movie_details(), cls="box")
 
 
@@ -106,7 +22,40 @@ def home():
 def get_details(index: int):
     movie = movies[index]
 
-    info_data = f"{movie["year"]}・{movie["runtime"] // 60}h {movie["runtime"] % 60}m"
+    info_data = f'{movie["year"]}・{movie["runtime"] // 60}h {movie["runtime"] % 60}m'
+
+    if "tomatoes" in movie:
+        tomatoes_obj = movie["tomatoes"]
+
+        tomatoes_critic = ""
+        if "critic" in tomatoes_obj and tomatoes_obj["critic"] is not None:
+            tomatoes_critic = rating(
+                tomatoes_obj["critic"]["rating"],
+                tomatoes_obj["critic"]["numReviews"],
+                "frontend/assets/tomatoe.png",
+                "tomatoes-critic-rating",
+            )
+
+        tomatoes_viewer = ""
+        if "viewer" in tomatoes_obj and tomatoes_obj["viewer"] is not None:
+            tomatoes_viewer = rating(
+                tomatoes_obj["viewer"]["rating"],
+                tomatoes_obj["viewer"]["numReviews"],
+                "frontend/assets/popcorn.png",
+                "tomatoes-viewer-rating",
+            )
+
+    imdb = ""
+    if "imdb" in movie and movie["imdb"] is not None:
+        imdb = rating(
+            movie["imdb"]["rating"],
+            movie["imdb"]["votes"],
+            "frontend/assets/imdb.png",
+            "imdb-rating",
+        )
+
+    raw_comments = fetch_comments(movie["_id"], 0)
+    comments = Ul(*raw_comments)
 
     return Div(
         Div(
@@ -118,24 +67,37 @@ def get_details(index: int):
             Div(
                 Img(src=movie["poster"], cls="details-poster"),
                 Div(
-                    P( B("Genres:  "), ', '.join(movie["genres"])),
+                    detail("Genres", "genres", movie),
                     Hr(),
-                    P( B("Directors:  "), ', '.join(movie["directors"])),
+                    detail("Directors", "directors", movie),
                     Hr(),
-                    P( B("Writers:  "), ', '.join(movie["writers"])),
+                    detail("Writers", "writers", movie),
                     Hr(),
-                    P(B("Cast:  "), ', '.join(movie["cast"])),
+                    detail("Cast", "cast", movie),
                     Hr(),
-                    P(B("Countries:  "), ', '.join(movie["countries"])),
+                    detail("Countries", "countries", movie),
+                    Div(imdb, tomatoes_critic, tomatoes_viewer, cls="ratings"),
+                    cls="details-info",
                 ),
                 cls="details-header-body",
             ),
             cls="details-header",
         ),
-        P(movie["plot"]),
-        P(movie["fullplot"]),
+        Br(),
+        (
+            P(movie["fullplot"])
+            if movie["fullplot"] is not None and len(movie["fullplot"]) > 0
+            else P(movie["plot"])
+        ),
+        comments,
         cls="movie-details",
     )
+
+
+@app.get("/comments/{movie_id}")
+def get_comments(movie_id: str):
+    raw_comments = fetch_comments(movie_id, 0)
+    return Ul(*raw_comments)
 
 
 @app.get("/movies")

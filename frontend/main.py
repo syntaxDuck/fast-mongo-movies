@@ -1,5 +1,7 @@
 from fasthtml.common import *
-import requests
+from .components import movie_details, movie_list
+from .data import fetch_movies, process_movies, MOVIE_PAGE_SIZE
+from .helper import build_movie_list
 
 app, rt = fast_app(
     live=True,
@@ -9,13 +11,53 @@ app, rt = fast_app(
             .box {
                 display:flex;
                 flex-direction: row; 
+                align-items: flex-start;
             }
+
+            .details-header {
+                display: flex; 
+                flex-direction: column;
+            }
+
+            .details-header-info {
+                display: flex;
+                flex-direction: column;
+            }
+
+            .details-header-body {
+                display: flex;
+            }
+
+            .details-header-body div {
+                padding-left: 1em;
+            }
+            
+            .details-header-body p {
+                margin: 0;
+            }
+            
+            .details-header-body hr {
+                margin-top: 0.5em;
+                margin-bottom: 0.5em;
+            }
+            
+            .details-header-info h1 {
+                padding: 0;
+                margin: 0;
+            }
+
 
             .movie-details {
                 padding-top: 1em;
                 flex-grow: 1; 
                 display: flex;
+                flex-direction: column;
                 justify-content: center;
+            }
+            
+            .details-poster {
+                width: 40%;
+                height: 100%;
             }
 
             .movie-details img { background-color: #f2f2f2;
@@ -49,98 +91,64 @@ app, rt = fast_app(
     ),
 )
 
-api_url = "http://127.0.0.1:8000"
-
-
-def movie_list():
-    return Div(
-        Ul(
-            cls="movie-list",
-            hx_get="/movies",
-            hx_trigger="load",
-            hx_swap="innerHTML",
-        ),
-        Button(
-            "Next",
-            hx_get="/movies",
-            hx_target=".movie-list",
-            hx_swap="beforeend",
-        ),
-        cls="movies",
-    )
-
-
-def movie_details():
-    return Div(cls="movie-details")
+movies = []
 
 
 @app.route("/", methods="get")
 def home():
-    global page
-    page = 0
+    global movies
+    movies = []
+
     return Div(movie_list(), movie_details(), cls="box")
-
-
-@app.route("/", methods=["post", "put"])
-def post_or_put():
-    return "got a POST or PUT request"
-
-
-page = 0
-movies = []
 
 
 @app.get("/details/{index}")
 def get_details(index: int):
-    return Div(Img(src=movies[index]["poster"]))
+    movie = movies[index]
+
+    info_data = f"{movie["year"]}・{movie["runtime"] // 60}h {movie["runtime"] % 60}m"
+
+    return Div(
+        Div(
+            Div(
+                H1(movie["title"]),
+                Div(P(info_data)),
+                cls="details-header-info",
+            ),
+            Div(
+                Img(src=movie["poster"], cls="details-poster"),
+                Div(
+                    P( B("Genres:  "), ', '.join(movie["genres"])),
+                    Hr(),
+                    P( B("Directors:  "), ', '.join(movie["directors"])),
+                    Hr(),
+                    P( B("Writers:  "), ', '.join(movie["writers"])),
+                    Hr(),
+                    P(B("Cast:  "), ', '.join(movie["cast"])),
+                    Hr(),
+                    P(B("Countries:  "), ', '.join(movie["countries"])),
+                ),
+                cls="details-header-body",
+            ),
+            cls="details-header",
+        ),
+        P(movie["plot"]),
+        P(movie["fullplot"]),
+        cls="movie-details",
+    )
 
 
 @app.get("/movies")
 def get_movies():
-    global page
     global movies
+    global MOVIE_PAGE_SIZE
 
-    url = f"{api_url}/movies?limit=10&skip={page*10}"
-    params = {"type": "movie"}
-    data = requests.get(url, params=params)
-    data = data.json()
-    default_img = "https://thumbs.dreamstime.com/b/film-real-25021714.jpg"
+    page = len(movies) // MOVIE_PAGE_SIZE
+    raw_movies = fetch_movies(page)
+    new_movies = process_movies(raw_movies)
+    movies += new_movies
 
-    count = 0
-    list_movies = []
-    for movie in data:
-        image = default_img
-        if movie["poster"]:
-            response = requests.head(movie["poster"], allow_redirects=False)
-            if response.status_code == 200:
-                image = movie["poster"]
-            else:
-                image = default_img
-        else:
-            image = default_img
-
-        movies.append(movie)
-
-        list_movies.append(
-            Li(
-                Img(
-                    src=image,
-                ),
-                P(
-                    movie["title"],
-                    style="text-align: center; color: black",
-                ),
-                cls="movie",
-                hx_get=f"/details/{count}",
-                hx_target=".movie-details",
-                hx_swap="innerHTML",
-                hx_trigger="click",
-            )
-        )
-        count += 1
-
-    page += 1
-    return list_movies
+    return build_movie_list(movies)
 
 
 serve()

@@ -2,7 +2,7 @@ from typing import Any
 
 from bson import ObjectId
 
-from backend.core.logging import get_logger
+from ..core.logging import get_logger
 
 logger = get_logger(__name__)
 
@@ -22,9 +22,7 @@ class MongoQuery:
                 id = ObjectId(id)
             except Exception as e:
                 id = id
-                logger.warning(
-                    f"Failed to convert movie_id to ObjectId: {id}, error: {e}"
-                )
+                logger.warning(f"Failed to convert movie_id to ObjectId: {id}, error: {e}")
 
         if id:
             query["_id"] = id
